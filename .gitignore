@@ -1,0 +1,26 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Dependencies and build output
+node_modules/
+dist/
+build/
+.next/
+coverage/
+
+# Logs and local data
+*.log
+*.sqlite
+*.sqlite3
+*.db
+tmp/
+.cache/
+
+# Editor and operating system
+.DS_Store
+.idea/
+.vscode/
