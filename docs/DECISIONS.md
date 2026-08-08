@@ -14,4 +14,10 @@ Use this log for decisions that affect product behavior, security, data, integra
 
 ---
 
-No decisions have been recorded yet.
+### 2026-08-08 — Simple browser-first meeting MVP
+
+- **Status:** Approved
+- **Context:** The first release must be easy to open from Mac or mobile and should avoid unnecessary infrastructure before translation credentials are available.
+- **Decision:** Use a minimal Dayani web shell with Jitsi Meet as the temporary video transport. Keep the translation panel separate so Palabra and the Persian translation path can be added without replacing the UI.
+- **Consequences:** The first release can provide a real browser video call without a custom signaling backend. Palabra live translation, Smart Reply, private AI processing, and final self-hosted WebRTC/LiveKit transport remain the next integration steps. No API credentials are stored client-side.
+- **Owner:** Dayani Group
