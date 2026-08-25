@@ -1,0 +1,11 @@
+meet.dayanigroup.com {
+    encode zstd gzip
+
+    handle_path /translate/* {
+        reverse_proxy translation:8001
+    }
+
+    handle {
+        reverse_proxy meeting:3000
+    }
+}
