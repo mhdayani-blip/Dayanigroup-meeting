@@ -16,8 +16,16 @@ Use this log for decisions that affect product behavior, security, data, integra
 
 ### 2026-08-08 — Simple browser-first meeting MVP
 
+- **Status:** Superseded
+- **Context:** Jitsi was used only as a temporary path to get a browser video call running quickly.
+- **Decision:** Replace Jitsi with the self-hosted WebRTC architecture below.
+- **Consequences:** Existing Jitsi code remains only on `main` until the self-hosted server is deployed and verified.
+- **Owner:** Dayani Group
+
+### 2026-08-25 — Dayani-owned 1:1 WebRTC core
+
 - **Status:** Approved
-- **Context:** The first release must be easy to open from Mac or mobile and should avoid unnecessary infrastructure before translation credentials are available.
-- **Decision:** Use a minimal Dayani web shell with Jitsi Meet as the temporary video transport. Keep the translation panel separate so Palabra and the Persian translation path can be added without replacing the UI.
-- **Consequences:** The first release can provide a real browser video call without a custom signaling backend. Palabra live translation, Smart Reply, private AI processing, and final self-hosted WebRTC/LiveKit transport remain the next integration steps. No API credentials are stored client-side.
+- **Context:** Dayani Group needs a very light private video meeting that works from Mac or mobile without Zoom, Google Meet, Jitsi or translation features.
+- **Decision:** Use direct browser WebRTC media, a Dayani-owned Node/WebSocket signaling server, host approval for one guest, and self-hosted coturn for NAT traversal. Keep the approved dark Dayani call UI and exclude translation/AI from V1.
+- **Consequences:** `meet.dayanigroup.com` must run on infrastructure that supports a persistent Node/WebSocket process; GitHub Pages alone is insufficient. A public TURN server under Dayani control is required for reliable internet/mobile connectivity.
 - **Owner:** Dayani Group
