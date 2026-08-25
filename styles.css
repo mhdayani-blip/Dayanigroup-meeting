@@ -56,6 +56,8 @@ button { cursor: pointer; }
 .remote-empty { position: absolute; inset: 0; display: grid; place-content: center; gap: 8px; text-align: center; padding: 30px; }
 .remote-empty strong { font-size: clamp(24px, 4vw, 40px); letter-spacing: -.03em; }
 .remote-empty span { color: var(--muted); }
+.subtitle { position: absolute; left: 50%; bottom: 108px; transform: translateX(-50%); width: min(78%, 900px); padding: 12px 18px; border-radius: 16px; background: rgba(8,8,9,.72); border: 1px solid rgba(255,255,255,.08); backdrop-filter: blur(14px); color: #fff; font-size: clamp(22px, 2.1vw, 34px); font-weight: 700; line-height: 1.45; text-align: center; text-wrap: balance; box-shadow: 0 14px 40px rgba(0,0,0,.28); }
+.subtitle[dir="rtl"] { direction: rtl; font-family: Tahoma, Arial, sans-serif; }
 .self-view { position: absolute; right: 22px; bottom: 92px; width: min(22vw, 260px); aspect-ratio: 4 / 3; overflow: hidden; border-radius: 18px; border: 1px solid rgba(255,255,255,.16); background: #111; box-shadow: 0 14px 40px rgba(0,0,0,.4); }
 .self-view video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
 .self-view span { position: absolute; left: 10px; bottom: 8px; padding: 5px 8px; border-radius: 999px; background: rgba(0,0,0,.55); font-size: 11px; }
@@ -73,6 +75,7 @@ button { cursor: pointer; }
   .topbar { height: 54px; padding: 0 12px; }
   .brand-row.compact strong { font-size: 12px; }
   .call-stage { height: calc(100dvh - 54px); border-radius: 0; border-left: 0; border-right: 0; border-bottom: 0; }
+  .subtitle { width: calc(100% - 32px); bottom: 118px; padding: 10px 14px; font-size: clamp(20px, 6vw, 28px); border-radius: 14px; }
   .self-view { width: 31vw; max-width: 150px; right: 12px; bottom: 90px; border-radius: 14px; }
   .call-controls { bottom: max(14px, env(safe-area-inset-bottom)); gap: 6px; padding: 6px; width: calc(100% - 24px); justify-content: center; }
   .control-button { min-width: 0; flex: 1; padding: 12px 10px; }
