@@ -132,8 +132,13 @@ wss.on('connection', client => {
     }
 
     if (['offer', 'answer', 'ice'].includes(message.type) && room.approved) {
-      const target = otherPeer(room, client);
-      safeSend(target, message);
+      safeSend(otherPeer(room, client), message);
+      return;
+    }
+
+    if (message.type === 'caption' && room.approved) {
+      const text = String(message.text || '').trim().slice(0, 1200);
+      if (text) safeSend(otherPeer(room, client), { type: 'caption', text });
       return;
     }
 
