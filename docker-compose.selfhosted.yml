@@ -1,0 +1,62 @@
+services:
+  meeting:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      STUN_URL: stun:turn.dayanigroup.com:3478
+      TURN_URL: turn:turn.dayanigroup.com:3478
+      TURN_USERNAME: ${TURN_USERNAME}
+      TURN_PASSWORD: ${TURN_PASSWORD}
+
+  translation:
+    build:
+      context: .
+      dockerfile: translation/Dockerfile
+    restart: unless-stopped
+    environment:
+      MODEL_DEVICE: ${MODEL_DEVICE:-cpu}
+      WHISPER_MODEL: ${WHISPER_MODEL:-small}
+      TRANSLATION_MODEL: ${TRANSLATION_MODEL:-santhosh/madlad400-3b-ct2}
+      TRANSLATION_CHUNK_SECONDS: ${TRANSLATION_CHUNK_SECONDS:-3.0}
+    volumes:
+      - hf_models:/models/huggingface
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - meeting
+      - translation
+
+  coturn:
+    image: coturn/coturn:4.6.3
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - -n
+      - --log-file=stdout
+      - --fingerprint
+      - --lt-cred-mech
+      - --realm=dayanigroup.com
+      - --user=${TURN_USERNAME}:${TURN_PASSWORD}
+      - --listening-port=3478
+      - --min-port=49160
+      - --max-port=49200
+      - --no-cli
+      - --no-multicast-peers
+
+volumes:
+  hf_models:
+  caddy_data:
+  caddy_config:
