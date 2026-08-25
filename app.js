@@ -28,6 +28,7 @@ let localStream;
 let peer;
 let socket;
 let translationSocket;
+let hostToken = '';
 let audioContext;
 let audioProcessor;
 let audioSource;
@@ -38,6 +39,10 @@ let timerId;
 let subtitleTimer;
 let startedAt;
 let rtcConfig = { iceServers: [] };
+let pendingIceCandidates = [];
+let isLeaving = false;
+let reconnectAttempts = 0;
+let reconnectTimer;
 
 const params = new URLSearchParams(location.search);
 const incomingRoom = sanitizeRoom(params.get('room'));
@@ -70,10 +75,43 @@ function hostUrl(roomCode) {
   return url.toString();
 }
 
+function hostTokenKey(roomCode) {
+  return `dayani-host-token:${roomCode}`;
+}
+
 function updateJoinMode() {
   enterButton.textContent = role === 'host' ? 'Start meeting' : 'Request to join';
   copyInviteButton.hidden = role !== 'host';
+  newRoomButton.hidden = role !== 'host';
   joinHint.textContent = role === 'guest' ? 'Guest link detected. Enter your name to request access.' : '';
+}
+
+async function provisionHostRoom() {
+  if (role !== 'host') return;
+  enterButton.disabled = true;
+  copyInviteButton.disabled = true;
+  newRoomButton.disabled = true;
+  joinHint.textContent = 'Preparing a secure meeting link…';
+  try {
+    const response = await fetch('/rooms', { method: 'POST' });
+    if (!response.ok) throw new Error('room creation failed');
+    const created = await response.json();
+    roomCodeInput.value = sanitizeRoom(created.code);
+    hostToken = String(created.hostToken || '');
+    if (!roomCodeInput.value || !hostToken) throw new Error('invalid room response');
+    sessionStorage.setItem(hostTokenKey(roomCodeInput.value), hostToken);
+    history.replaceState({}, '', hostUrl(roomCodeInput.value));
+    joinHint.textContent = '';
+    return true;
+  } catch (error) {
+    console.error(error);
+    joinHint.textContent = 'A secure meeting link could not be prepared. Please retry.';
+    return false;
+  } finally {
+    enterButton.disabled = false;
+    copyInviteButton.disabled = false;
+    newRoomButton.disabled = false;
+  }
 }
 
 async function loadRtcConfig() {
@@ -95,21 +133,43 @@ function openSocket() {
   return new Promise((resolve, reject) => {
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     socket = new WebSocket(`${protocol}//${location.host}/signal`);
-    socket.addEventListener('open', resolve, { once: true });
+    socket.addEventListener('open', () => {
+      reconnectAttempts = 0;
+      resolve();
+    }, { once: true });
     socket.addEventListener('error', reject, { once: true });
     socket.addEventListener('message', onSignalMessage);
-    socket.addEventListener('close', () => setState('Disconnected'));
+    socket.addEventListener('close', () => {
+      setState('Disconnected');
+      if (!isLeaving && room && localStream) scheduleReconnect();
+    });
   });
 }
 
 function send(type, payload = {}) {
   if (socket?.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({ type, room, role, name: displayName, ...payload }));
+    socket.send(JSON.stringify({ type, room, role, name: displayName, hostToken, ...payload }));
   }
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer || reconnectAttempts >= 5) return;
+  const delay = Math.min(1000 * 2 ** reconnectAttempts, 8000);
+  reconnectAttempts += 1;
+  reconnectTimer = setTimeout(async () => {
+    reconnectTimer = null;
+    try {
+      await openSocket();
+      send('join');
+    } catch {
+      scheduleReconnect();
+    }
+  }, delay);
 }
 
 async function createPeer(isOfferer) {
   if (peer) peer.close();
+  pendingIceCandidates = [];
   peer = new RTCPeerConnection(rtcConfig);
   localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
 
@@ -128,6 +188,10 @@ async function createPeer(isOfferer) {
     const state = peer.connectionState;
     if (state === 'connected') setState('Live', true);
     else if (['failed', 'disconnected', 'closed'].includes(state)) setState('Disconnected');
+  };
+
+  peer.oniceconnectionstatechange = () => {
+    if (peer?.iceConnectionState === 'failed') peer.restartIce();
   };
 
   if (isOfferer) {
@@ -171,16 +235,22 @@ async function onSignalMessage(event) {
     case 'offer':
       await createPeer(false);
       await peer.setRemoteDescription(message.sdp);
+      await addPendingIceCandidates();
       const answer = await peer.createAnswer();
       await peer.setLocalDescription(answer);
       send('answer', { sdp: answer });
       break;
     case 'answer':
       await peer.setRemoteDescription(message.sdp);
+      await addPendingIceCandidates();
       break;
     case 'ice':
       if (peer && message.candidate) {
-        try { await peer.addIceCandidate(message.candidate); } catch {}
+        if (peer.remoteDescription) {
+          try { await peer.addIceCandidate(message.candidate); } catch {}
+        } else {
+          pendingIceCandidates.push(message.candidate);
+        }
       }
       break;
     case 'caption':
@@ -202,6 +272,25 @@ async function onSignalMessage(event) {
       remoteStatusTitle.textContent = 'Room is full';
       remoteStatusText.textContent = 'This meeting already has two participants.';
       break;
+    case 'room-not-ready':
+      setState('Room unavailable');
+      remoteStatusTitle.textContent = 'Meeting not ready';
+      remoteStatusText.textContent = 'Ask the host to start the meeting and send a fresh link.';
+      break;
+    case 'host-auth-failed':
+      setState('Host verification failed');
+      remoteStatusTitle.textContent = 'Host verification failed';
+      remoteStatusText.textContent = 'Create a new secure meeting link and try again.';
+      break;
+  }
+}
+
+async function addPendingIceCandidates() {
+  if (!peer?.remoteDescription) return;
+  const candidates = pendingIceCandidates;
+  pendingIceCandidates = [];
+  for (const candidate of candidates) {
+    try { await peer.addIceCandidate(candidate); } catch {}
   }
 }
 
@@ -266,7 +355,7 @@ function startTranslation() {
 
   translationSocket.addEventListener('open', () => {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    audioContext = new AudioCtx();
+    audioContext ||= new AudioCtx();
     audioSource = audioContext.createMediaStreamSource(localStream);
     audioProcessor = audioContext.createScriptProcessor(4096, 1, 1);
     const silent = audioContext.createGain();
@@ -282,6 +371,7 @@ function startTranslation() {
     audioSource.connect(audioProcessor);
     audioProcessor.connect(silent);
     silent.connect(audioContext.destination);
+    audioContext.resume().catch(() => {});
   });
 
   translationSocket.addEventListener('message', event => {
@@ -314,8 +404,19 @@ async function enterMeeting() {
   localStorage.setItem('dayani-display-name', displayName);
   joinHint.textContent = 'Opening camera and microphone…';
   try {
+    if (role === 'host') {
+      hostToken = sessionStorage.getItem(hostTokenKey(room)) || '';
+      if (!hostToken) {
+        const provisioned = await provisionHostRoom();
+        if (!provisioned) throw new Error('room could not be provisioned');
+        room = sanitizeRoom(roomCodeInput.value);
+      }
+    }
     await loadRtcConfig();
     await getMedia();
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    audioContext = new AudioCtx();
+    await audioContext.resume();
     await openSocket();
     joinScreen.hidden = true;
     meetingScreen.hidden = false;
@@ -328,6 +429,8 @@ async function enterMeeting() {
 }
 
 function leaveMeeting() {
+  isLeaving = true;
+  clearTimeout(reconnectTimer);
   clearInterval(timerId);
   timerId = null;
   stopTranslation();
@@ -353,9 +456,8 @@ joinForm.addEventListener('submit', event => {
 
 newRoomButton.addEventListener('click', () => {
   role = 'host';
-  roomCodeInput.value = createRoomCode();
-  history.replaceState({}, '', hostUrl(roomCodeInput.value));
   updateJoinMode();
+  provisionHostRoom();
 });
 
 copyInviteButton.addEventListener('click', async () => {
@@ -369,3 +471,8 @@ denyGuest.addEventListener('click', () => { send('deny'); approvalCard.hidden = 
 micButton.addEventListener('click', () => toggleTrack('audio', micButton));
 cameraButton.addEventListener('click', () => toggleTrack('video', cameraButton));
 endCallButton.addEventListener('click', leaveMeeting);
+
+if (role === 'host') {
+  hostToken = sessionStorage.getItem(hostTokenKey(roomCodeInput.value)) || '';
+  if (!hostToken) provisionHostRoom();
+}

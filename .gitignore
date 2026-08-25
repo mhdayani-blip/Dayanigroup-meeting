@@ -19,6 +19,7 @@ coverage/
 *.db
 tmp/
 .cache/
+__pycache__/
 
 # Editor and operating system
 .DS_Store

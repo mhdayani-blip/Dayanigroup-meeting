@@ -6,10 +6,10 @@ services:
     restart: unless-stopped
     environment:
       PORT: 3000
+      ALLOWED_ORIGIN: https://meet.dayanigroup.com
       STUN_URL: stun:turn.dayanigroup.com:3478
-      TURN_URL: turn:turn.dayanigroup.com:3478
-      TURN_USERNAME: ${TURN_USERNAME}
-      TURN_PASSWORD: ${TURN_PASSWORD}
+      TURN_URL: turn:turn.dayanigroup.com:3478?transport=udp,turn:turn.dayanigroup.com:3478?transport=tcp
+      TURN_SHARED_SECRET: ${TURN_SHARED_SECRET}
 
   translation:
     build:
@@ -47,13 +47,18 @@ services:
       - -n
       - --log-file=stdout
       - --fingerprint
-      - --lt-cred-mech
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SHARED_SECRET}
       - --realm=dayanigroup.com
-      - --user=${TURN_USERNAME}:${TURN_PASSWORD}
       - --listening-port=3478
+      - --external-ip=${PUBLIC_IP}
       - --min-port=49160
       - --max-port=49200
+      - --user-quota=2
+      - --total-quota=12
+      - --stale-nonce
       - --no-cli
+      - --no-loopback-peers
       - --no-multicast-peers
 
 volumes:

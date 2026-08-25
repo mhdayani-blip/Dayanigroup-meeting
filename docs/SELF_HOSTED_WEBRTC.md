@@ -21,17 +21,20 @@ Recommended split:
 GitHub Pages cannot host this version because signaling requires a persistent WebSocket server.
 
 ## Environment
-Copy `.env.example` to `.env` on the server and set:
-- `PORT`
-- `STUN_URL`
-- `TURN_URL`
-- `TURN_USERNAME`
-- `TURN_PASSWORD`
+Copy `.env.selfhosted.example` to `.env` on the server and set:
+- `TURN_SHARED_SECRET` — long random coturn TURN-REST shared secret
+- `PUBLIC_IP` — the VPS public IPv4 address
+- `MODEL_DEVICE`, `WHISPER_MODEL`, `TRANSLATION_MODEL` and
+  `TRANSLATION_CHUNK_SECONDS` only after the subtitle benchmark
 
-Never commit `.env` or production TURN credentials.
+The Node service derives short-lived TURN credentials from `TURN_SHARED_SECRET`.
+It never sends the long-lived coturn secret to a browser. Never commit `.env`,
+the shared secret, server credentials or TLS keys.
 
 ## App behavior
 - Host creates a room and receives a guest link.
+- The server issues a random host-only capability token; a guest cannot become
+  host merely by changing `role=guest` in the URL.
 - Guest opens the link on mobile or desktop and requests entry.
 - Host sees the guest name and allows or denies entry.
 - After approval, the two browsers establish a peer-to-peer WebRTC call.
@@ -48,4 +51,6 @@ Never commit `.env` or production TURN credentials.
 6. Test matrix: Mac Safari/Chrome ↔ iPhone Safari, Mac ↔ Android Chrome, mobile ↔ mobile, Wi-Fi ↔ cellular.
 
 ## Next phase (not part of V1)
-Live Persian/English translation, subtitles and Smart Reply are intentionally excluded until the base video call is stable.
+The translated subtitle sidecar is included only on the local-subtitles branch.
+Smart Reply, transcript history, AI assistant and translated voice remain out of
+scope.

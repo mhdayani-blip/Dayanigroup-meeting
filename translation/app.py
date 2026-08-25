@@ -1,6 +1,8 @@
 import asyncio
 import os
+import time
 from functools import lru_cache
+from contextlib import asynccontextmanager
 
 import ctranslate2
 import numpy as np
@@ -21,6 +23,7 @@ LANGS = {
 }
 
 app = FastAPI(title="Dayani Local Translation")
+models_ready = False
 
 
 @lru_cache(maxsize=1)
@@ -80,10 +83,25 @@ def transcribe_and_translate(pcm_bytes: bytes, source: str, target: str) -> str:
     return translate_text(text, target)
 
 
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    global models_ready
+    # Download and load models before accepting a call. This prevents the first
+    # person in a meeting from waiting through a multi-gigabyte model download.
+    await asyncio.to_thread(get_whisper)
+    await asyncio.to_thread(get_translator)
+    models_ready = True
+    yield
+    models_ready = False
+
+
+app.router.lifespan_context = lifespan
+
+
 @app.get("/health")
 def health():
     return {
-        "ok": True,
+        "ok": models_ready,
         "whisper_model": WHISPER_MODEL,
         "translation_model": TRANSLATION_MODEL,
         "device": DEVICE,
@@ -102,6 +120,20 @@ async def translate_socket(websocket: WebSocket):
     await websocket.accept()
     minimum_bytes = int(SAMPLE_RATE * CHUNK_SECONDS * 2)
     buffer = bytearray()
+    in_flight: asyncio.Task | None = None
+
+    async def process(chunk: bytes):
+        started = time.perf_counter()
+        try:
+            translated = await asyncio.to_thread(transcribe_and_translate, chunk, source, target)
+            if translated:
+                await websocket.send_json({"type": "translation", "text": translated})
+        except Exception as error:
+            # Do not log text or audio-derived content. The service stores no
+            # recordings or transcript history.
+            print(f"translation failed: {type(error).__name__}", flush=True)
+        finally:
+            print(f"translation_chunk_seconds={time.perf_counter() - started:.3f}", flush=True)
 
     try:
         while True:
@@ -114,8 +146,13 @@ async def translate_socket(websocket: WebSocket):
 
             chunk = bytes(buffer)
             buffer.clear()
-            translated = await asyncio.to_thread(transcribe_and_translate, chunk, source, target)
-            if translated:
-                await websocket.send_json({"type": "translation", "text": translated})
+            # Preserve live subtitle latency: if a CPU-bound inference has not
+            # finished, discard the stale chunk rather than building an
+            # unbounded queue of speech that arrives seconds late.
+            if in_flight and not in_flight.done():
+                continue
+            in_flight = asyncio.create_task(process(chunk))
     except WebSocketDisconnect:
+        if in_flight:
+            in_flight.cancel()
         return

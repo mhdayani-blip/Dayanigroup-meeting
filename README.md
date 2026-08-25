@@ -4,55 +4,43 @@
 
 ## Product direction
 
-- International video meetings with a refined Dayani interface
-- Live translation support
-- Private real-time AI analysis panel for the owner
-- Compact self-view beneath the assistant panel
-- Matte-glass design language shared with other Dayani products
+- Private browser-first 1:1 video calls with native WebRTC
+- Host approval before a guest enters; maximum two participants
+- Dayani dark graphite / yellow matte-glass UI, preserved without dashboards or chat
+- Minimal translated subtitles only: Persian → English for the guest, English → Persian for Mohammad
+- No Zoom, Google Meet, Jitsi, paid translation API, recordings or transcript history
 
-## Current status
+## Production architecture
 
-The first static meeting interface is deployed with GitHub Pages. Jitsi provides the
-current browser-based meeting experience. Palabra translation is intentionally kept
-as the next isolated integration step so the current interface and meeting flow stay
-simple and unchanged.
+`meet.dayanigroup.com` is intended to run on one Ubuntu VPS through Docker Compose:
 
-## Deployment
+1. Node.js meeting app and WebSocket signaling
+2. Python Faster-Whisper + local translation sidecar
+3. coturn with short-lived TURN-REST credentials
+4. Caddy reverse proxy with automatic HTTPS
 
-The site is deployed by `.github/workflows/pages.yml` whenever `main` is updated.
-The workflow uploads the repository as a static Pages artifact and deploys it with
-GitHub's official Pages actions.
+GitHub Pages is only a temporary legacy deployment and cannot run this architecture.
+Keep its DNS record unchanged until the VPS is deployed and verified; at cutover,
+replace only the `meet` record with an A record pointing at the VPS and disable the
+Pages workflow/custom-domain configuration. Do not modify the main website records.
 
-GitHub repository settings:
+## Deploy on the VPS
 
-1. Open **Settings → Pages**.
-2. Under **Build and deployment**, set **Source** to **GitHub Actions**.
-3. Set **Custom domain** to `meet.dayanigroup.com`.
-4. After DNS validation succeeds, enable **Enforce HTTPS**.
-
-DNS record:
-
-| Type | Host / Name | Value / Target | TTL |
-| --- | --- | --- | --- |
-| CNAME | `meet` | `mhdayani-blip.github.io` | Automatic or 3600 |
-
-Do not add `https://`, a path, or a trailing dot unless the DNS provider adds it
-automatically. Remove any conflicting A, AAAA, or CNAME record for the `meet`
-hostname. If the DNS provider offers proxying, keep this record DNS-only until
-GitHub validates the custom domain and provisions HTTPS.
-
-The repository-root `CNAME` file must contain exactly:
-
-```text
-meet.dayanigroup.com
+```bash
+cp .env.selfhosted.example .env
+# Set TURN_SHARED_SECRET and PUBLIC_IP in .env.
+docker compose -f docker-compose.selfhosted.yml up -d --build
+docker compose -f docker-compose.selfhosted.yml logs -f translation
 ```
 
-## Palabra integration boundary
+Required firewall ports: TCP 80/443, TCP+UDP 3478, and UDP 49160-49200. The
+translation container downloads and loads its model before it accepts calls.
 
-Add Palabra later behind a small translation adapter or service module. Keep
-credentials and token creation server-side, and let the existing translation panel
-consume only translated text and connection state. Do not place Palabra secrets in
-this static repository or couple the translation transport to the Jitsi UI.
+## Model decision
+
+Do not select a final subtitle model from code review. Benchmark Faster-Whisper
+`base` and `small`, and NLLB-200 distilled 600M against the MADLAD baseline on the
+actual VPS. See `docs/LOCAL_SUBTITLES.md` for the acceptance measurements.
 
 ## Working rules
 
