@@ -2,21 +2,22 @@ import asyncio
 import os
 from functools import lru_cache
 
+import ctranslate2
 import numpy as np
-import torch
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from faster_whisper import WhisperModel
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+from huggingface_hub import snapshot_download
+from sentencepiece import SentencePieceProcessor
 
 SAMPLE_RATE = 16000
 CHUNK_SECONDS = float(os.getenv("TRANSLATION_CHUNK_SECONDS", "3.0"))
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
-NLLB_MODEL = os.getenv("NLLB_MODEL", "facebook/nllb-200-distilled-600M")
-DEVICE = os.getenv("MODEL_DEVICE", "cuda" if torch.cuda.is_available() else "cpu")
+TRANSLATION_MODEL = os.getenv("TRANSLATION_MODEL", "santhosh/madlad400-3b-ct2")
+DEVICE = os.getenv("MODEL_DEVICE", "cpu")
 
 LANGS = {
-    "en": {"whisper": "en", "nllb": "eng_Latn"},
-    "fa": {"whisper": "fa", "nllb": "pes_Arab"},
+    "en": {"whisper": "en", "madlad": "en"},
+    "fa": {"whisper": "fa", "madlad": "fa"},
 }
 
 app = FastAPI(title="Dayani Local Translation")
@@ -29,12 +30,30 @@ def get_whisper():
 
 
 @lru_cache(maxsize=1)
-def get_nllb():
-    tokenizer = AutoTokenizer.from_pretrained(NLLB_MODEL)
-    model = AutoModelForSeq2SeqLM.from_pretrained(NLLB_MODEL)
-    model.to(DEVICE)
-    model.eval()
-    return tokenizer, model
+def get_translator():
+    model_path = snapshot_download(TRANSLATION_MODEL)
+    tokenizer = SentencePieceProcessor()
+    tokenizer.load(os.path.join(model_path, "sentencepiece.model"))
+    translator = ctranslate2.Translator(
+        model_path,
+        device=DEVICE,
+        compute_type="float16" if DEVICE == "cuda" else "int8",
+    )
+    return tokenizer, translator
+
+
+def translate_text(text: str, target: str) -> str:
+    tokenizer, translator = get_translator()
+    target_tag = LANGS[target]["madlad"]
+    tokens = tokenizer.encode(f"<2{target_tag}> {text}", out_type=str)
+    result = translator.translate_batch(
+        [tokens],
+        beam_size=1,
+        max_decoding_length=160,
+        no_repeat_ngram_size=1,
+        repetition_penalty=1.2,
+    )[0]
+    return tokenizer.decode(result.hypotheses[0]).strip()
 
 
 def transcribe_and_translate(pcm_bytes: bytes, source: str, target: str) -> str:
@@ -45,8 +64,7 @@ def transcribe_and_translate(pcm_bytes: bytes, source: str, target: str) -> str:
     if audio.size < SAMPLE_RATE // 2:
         return ""
 
-    whisper = get_whisper()
-    segments, _ = whisper.transcribe(
+    segments, _ = get_whisper().transcribe(
         audio,
         language=LANGS[source]["whisper"],
         vad_filter=True,
@@ -59,21 +77,7 @@ def transcribe_and_translate(pcm_bytes: bytes, source: str, target: str) -> str:
     if not text:
         return ""
 
-    tokenizer, model = get_nllb()
-    tokenizer.src_lang = LANGS[source]["nllb"]
-    encoded = tokenizer(text, return_tensors="pt", truncation=True, max_length=256)
-    encoded = {key: value.to(DEVICE) for key, value in encoded.items()}
-    target_id = tokenizer.convert_tokens_to_ids(LANGS[target]["nllb"])
-
-    with torch.inference_mode():
-        generated = model.generate(
-            **encoded,
-            forced_bos_token_id=target_id,
-            max_new_tokens=160,
-            num_beams=1,
-        )
-    translated = tokenizer.batch_decode(generated, skip_special_tokens=True)[0].strip()
-    return translated
+    return translate_text(text, target)
 
 
 @app.get("/health")
@@ -81,8 +85,9 @@ def health():
     return {
         "ok": True,
         "whisper_model": WHISPER_MODEL,
-        "translation_model": NLLB_MODEL,
+        "translation_model": TRANSLATION_MODEL,
         "device": DEVICE,
+        "languages": ["fa", "en"],
     }
 
 
