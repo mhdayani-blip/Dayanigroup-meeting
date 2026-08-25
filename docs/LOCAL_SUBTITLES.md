@@ -62,7 +62,7 @@ Open firewall ports:
 - TCP 443
 - UDP 443
 - TCP/UDP 3478
-- UDP 49160-49200
+- TCP/UDP 49160-49200
 
 Caddy automatically serves HTTPS for `meet.dayanigroup.com`. coturn provides self-hosted STUN/TURN.
 

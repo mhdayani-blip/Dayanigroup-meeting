@@ -33,7 +33,7 @@ docker compose -f docker-compose.selfhosted.yml up -d --build
 docker compose -f docker-compose.selfhosted.yml logs -f translation
 ```
 
-Required firewall ports: TCP 80/443, TCP+UDP 3478, and UDP 49160-49200. The
+Required firewall ports: TCP 80/443, TCP+UDP 3478, and TCP+UDP 49160-49200. The
 translation container downloads and loads its model before it accepts calls.
 
 ## Model decision
