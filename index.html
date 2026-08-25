@@ -3,46 +3,42 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#0a0a0b" />
+  <meta name="theme-color" content="#080809" />
   <title>Dayani Meeting</title>
-  <link rel="preconnect" href="https://meet.jit.si" />
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <main id="app" class="app-shell">
+  <main class="app-shell">
     <section id="joinScreen" class="join-screen">
       <div class="join-card">
         <div class="brand-row">
-          <div class="brand-mark" aria-hidden="true">D</div>
+          <div class="brand-mark">D</div>
           <div>
             <strong>DAYANI GROUP</strong>
-            <span>Private Meeting</span>
+            <span>Private Video Meeting</span>
           </div>
         </div>
 
         <div class="join-copy">
-          <h1>Simple international video meeting.</h1>
-          <p>Open one secure link on Mac or mobile. No app installation required.</p>
+          <h1>Private video meeting.</h1>
+          <p>One link. Mac or mobile. No app installation.</p>
         </div>
 
         <form id="joinForm" class="join-form">
           <label>
             Your name
-            <input id="displayName" name="displayName" autocomplete="name" placeholder="Mohammad" required />
+            <input id="displayName" autocomplete="name" placeholder="Mohammad" required />
           </label>
-
           <label>
             Meeting code
             <div class="room-row">
-              <input id="roomCode" name="roomCode" autocomplete="off" spellcheck="false" required />
-              <button id="randomRoom" class="ghost-button" type="button">New</button>
+              <input id="roomCode" autocomplete="off" spellcheck="false" required />
+              <button id="newRoom" class="ghost-button" type="button">New</button>
             </div>
           </label>
-
-          <button class="primary-button" type="submit">Enter meeting</button>
-          <button id="copyInvite" class="text-button" type="button">Copy invitation link</button>
+          <button id="enterButton" class="primary-button" type="submit">Start meeting</button>
+          <button id="copyInvite" class="text-button" type="button">Copy guest link</button>
         </form>
-
         <p id="joinHint" class="hint" aria-live="polite"></p>
       </div>
     </section>
@@ -50,47 +46,46 @@
     <section id="meetingScreen" class="meeting-screen" hidden>
       <header class="topbar">
         <div class="brand-row compact">
-          <div class="brand-mark" aria-hidden="true">D</div>
+          <div class="brand-mark">D</div>
           <strong>DAYANI GROUP</strong>
         </div>
         <div class="meeting-meta">
-          <span class="live-dot"><i></i> LIVE</span>
+          <span id="connectionState" class="state-pill">Connecting</span>
           <span id="elapsed">00:00</span>
-          <button id="copyInviteTop" class="icon-button" type="button" aria-label="Copy invite link" title="Copy invite link">↗</button>
+          <button id="copyInviteTop" class="icon-button" type="button" aria-label="Copy guest link">↗</button>
         </div>
       </header>
 
-      <div class="workspace">
-        <section class="video-panel" aria-label="Video meeting">
-          <div id="jitsiContainer" class="jitsi-container"></div>
-        </section>
+      <section class="call-stage">
+        <video id="remoteVideo" class="remote-video" autoplay playsinline></video>
+        <div id="remoteEmpty" class="remote-empty">
+          <strong id="remoteStatusTitle">Waiting for guest</strong>
+          <span id="remoteStatusText">Share the meeting link to begin.</span>
+        </div>
 
-        <aside class="side-panel" aria-label="Translation panel">
-          <div class="side-head">
-            <div>
-              <span class="eyebrow">LIVE TRANSLATION</span>
-              <strong>English ↔ Persian</strong>
-            </div>
-            <span class="ready-chip">Ready</span>
+        <div class="self-view">
+          <video id="localVideo" autoplay playsinline muted></video>
+          <span>You</span>
+        </div>
+
+        <div id="approvalCard" class="approval-card" hidden>
+          <span>Join request</span>
+          <strong id="guestName">Guest</strong>
+          <div>
+            <button id="approveGuest" class="primary-button small" type="button">Allow</button>
+            <button id="denyGuest" class="ghost-button small" type="button">Deny</button>
           </div>
+        </div>
 
-          <div class="translation-card muted-card">
-            <span>Franco → You (FA)</span>
-            <p>Palabra / Persian translation will appear here in the next integration step.</p>
-          </div>
-
-          <div class="translation-card muted-card">
-            <span>You → Franco (EN)</span>
-            <p>Your English translation and Smart Reply will appear here.</p>
-          </div>
-
-          <button id="togglePanel" class="panel-action" type="button">Hide panel</button>
-        </aside>
-      </div>
+        <div class="call-controls">
+          <button id="micButton" class="control-button active" type="button">Mic</button>
+          <button id="cameraButton" class="control-button active" type="button">Camera</button>
+          <button id="endCall" class="control-button danger" type="button">End</button>
+        </div>
+      </section>
     </section>
   </main>
 
-  <script src="https://meet.jit.si/external_api.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>
