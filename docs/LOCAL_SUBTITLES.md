@@ -30,7 +30,16 @@ This avoids processing the remote audio twice and keeps the UI minimal.
 - Translation: `santhosh/madlad400-3b-ct2`, a CTranslate2 conversion of MADLAD-400.
 - Translation target tags: `fa` and `en`.
 
-Model files are public and downloaded on the server during first use. No Hugging Face account/token is required for these public files.
+Model files are public and downloaded when the translation container starts, not
+when the first caller speaks. No Hugging Face account/token is required for the
+current MADLAD baseline. The service does not accept calls until both models are
+loaded, so Caddy may briefly report the translation endpoint unavailable after a
+cold deployment.
+
+The translation worker allows only one chunk in flight per participant. When a
+CPU-bound chunk is still processing, the next stale chunk is dropped instead of
+forming a delayed transcript queue. This is intentional: subtitle freshness is
+more useful than recovering every word for this product.
 
 ## Deployment
 
@@ -38,7 +47,7 @@ The simplest deployment is one Linux VPS with Docker Compose:
 
 ```bash
 cp .env.selfhosted.example .env
-# Edit TURN_PASSWORD before production.
+# Set TURN_SHARED_SECRET and the VPS PUBLIC_IP before production.
 docker compose -f docker-compose.selfhosted.yml up -d --build
 ```
 
@@ -53,9 +62,16 @@ Open firewall ports:
 - TCP 443
 - UDP 443
 - TCP/UDP 3478
-- UDP 49160-49200
+- TCP/UDP 49160-49200
 
 Caddy automatically serves HTTPS for `meet.dayanigroup.com`. coturn provides self-hosted STUN/TURN.
+
+Before choosing the production translation model, run the benchmark on the
+target VPS with real Persian and English conversational samples. Compare the
+current MADLAD CTranslate2 baseline with NLLB-200 distilled 600M (personal-use
+candidate), Faster-Whisper `base` and `small`, and 1.5 s, 2.0 s and 3.0 s chunks.
+Record end-to-end caption latency, RSS memory, CPU and human-understandable
+translation quality. Do not claim a final model choice from a local build alone.
 
 ## Performance note
 

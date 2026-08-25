@@ -5,7 +5,8 @@
   "description": "Dayani Group private 1:1 WebRTC meeting",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test tests/*.test.js"
   },
   "engines": {
     "node": ">=20"
