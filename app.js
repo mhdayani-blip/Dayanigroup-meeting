@@ -22,14 +22,20 @@ const denyGuest = document.getElementById('denyGuest');
 const micButton = document.getElementById('micButton');
 const cameraButton = document.getElementById('cameraButton');
 const endCallButton = document.getElementById('endCall');
+const subtitle = document.getElementById('subtitle');
 
 let localStream;
 let peer;
 let socket;
+let translationSocket;
+let audioContext;
+let audioProcessor;
+let audioSource;
 let role = 'host';
 let room = '';
 let displayName = '';
 let timerId;
+let subtitleTimer;
 let startedAt;
 let rtcConfig = { iceServers: [] };
 
@@ -79,7 +85,7 @@ async function loadRtcConfig() {
 
 async function getMedia() {
   localStream = await navigator.mediaDevices.getUserMedia({
-    audio: { echoCancellation: true, noiseSuppression: true },
+    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
   });
   localVideo.srcObject = localStream;
@@ -154,6 +160,7 @@ async function onSignalMessage(event) {
     case 'approved':
       approvalCard.hidden = true;
       setState('Connecting');
+      startTranslation();
       if (role === 'host') await createPeer(true);
       break;
     case 'denied':
@@ -176,7 +183,11 @@ async function onSignalMessage(event) {
         try { await peer.addIceCandidate(message.candidate); } catch {}
       }
       break;
+    case 'caption':
+      showSubtitle(message.text || '');
+      break;
     case 'peer-left':
+      stopTranslation();
       if (peer) peer.close();
       peer = null;
       remoteVideo.srcObject = null;
@@ -210,6 +221,92 @@ function startTimer() {
   }, 1000);
 }
 
+function showSubtitle(text) {
+  const clean = String(text || '').trim();
+  if (!clean) return;
+  subtitle.textContent = clean;
+  subtitle.dir = role === 'host' ? 'rtl' : 'ltr';
+  subtitle.lang = role === 'host' ? 'fa' : 'en';
+  subtitle.hidden = false;
+  clearTimeout(subtitleTimer);
+  subtitleTimer = setTimeout(() => { subtitle.hidden = true; }, 6500);
+}
+
+function downsampleTo16k(input, sampleRate) {
+  if (sampleRate === 16000) return input;
+  const ratio = sampleRate / 16000;
+  const length = Math.max(1, Math.floor(input.length / ratio));
+  const output = new Float32Array(length);
+  for (let i = 0; i < length; i++) {
+    const start = Math.floor(i * ratio);
+    const end = Math.min(input.length, Math.floor((i + 1) * ratio));
+    let sum = 0;
+    for (let j = start; j < end; j++) sum += input[j];
+    output[i] = sum / Math.max(1, end - start);
+  }
+  return output;
+}
+
+function floatToInt16(float32) {
+  const output = new Int16Array(float32.length);
+  for (let i = 0; i < float32.length; i++) {
+    const value = Math.max(-1, Math.min(1, float32[i]));
+    output[i] = value < 0 ? value * 0x8000 : value * 0x7fff;
+  }
+  return output;
+}
+
+function startTranslation() {
+  if (translationSocket || !localStream) return;
+  const source = role === 'host' ? 'fa' : 'en';
+  const target = role === 'host' ? 'en' : 'fa';
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  translationSocket = new WebSocket(`${protocol}//${location.host}/translate/ws?source=${source}&target=${target}`);
+  translationSocket.binaryType = 'arraybuffer';
+
+  translationSocket.addEventListener('open', () => {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    audioContext = new AudioCtx();
+    audioSource = audioContext.createMediaStreamSource(localStream);
+    audioProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+    const silent = audioContext.createGain();
+    silent.gain.value = 0;
+
+    audioProcessor.onaudioprocess = event => {
+      if (translationSocket?.readyState !== WebSocket.OPEN) return;
+      const input = event.inputBuffer.getChannelData(0);
+      const pcm = floatToInt16(downsampleTo16k(input, audioContext.sampleRate));
+      translationSocket.send(pcm.buffer);
+    };
+
+    audioSource.connect(audioProcessor);
+    audioProcessor.connect(silent);
+    silent.connect(audioContext.destination);
+  });
+
+  translationSocket.addEventListener('message', event => {
+    try {
+      const payload = JSON.parse(event.data);
+      if (payload.type === 'translation' && payload.text) send('caption', { text: payload.text });
+    } catch {}
+  });
+
+  translationSocket.addEventListener('close', () => {
+    translationSocket = null;
+  });
+}
+
+function stopTranslation() {
+  try { audioProcessor?.disconnect(); } catch {}
+  try { audioSource?.disconnect(); } catch {}
+  try { audioContext?.close(); } catch {}
+  try { translationSocket?.close(); } catch {}
+  audioProcessor = null;
+  audioSource = null;
+  audioContext = null;
+  translationSocket = null;
+}
+
 async function enterMeeting() {
   displayName = displayNameInput.value.trim();
   room = sanitizeRoom(roomCodeInput.value);
@@ -233,6 +330,7 @@ async function enterMeeting() {
 function leaveMeeting() {
   clearInterval(timerId);
   timerId = null;
+  stopTranslation();
   send('leave');
   socket?.close();
   peer?.close();
