@@ -1,0 +1,102 @@
+name: Compare Persian Piper Voices
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - test/edge-tts-dilara
+    paths:
+      - .github/workflows/compare-persian-piper-voices.yml
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Setup
+        run: |
+          set -euxo pipefail
+          python -m pip install --upgrade pip
+          pip install piper-tts transformers soundfile accelerate sentencepiece
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          mkdir -p models out
+
+      - name: Download models
+        run: |
+          set -euxo pipefail
+          # Mana
+          curl -L --fail --retry 5 \
+            'https://huggingface.co/MahtaFetrat/Mana-Persian-Piper/resolve/main/fa_IR-mana-medium.onnx?download=true' \
+            -o models/mana.onnx
+          curl -L --fail --retry 5 \
+            'https://huggingface.co/MahtaFetrat/Mana-Persian-Piper/resolve/main/fa_IR-mana-medium.onnx.json?download=true' \
+            -o models/mana.onnx.json
+
+          # Amir
+          curl -L --fail --retry 5 \
+            'https://huggingface.co/SadeghK/persian-text-to-speech/resolve/main/farsi/amir/epoch%3D5261-step%3D2455712.onnx?download=true' \
+            -o models/amir.onnx
+          curl -L --fail --retry 5 \
+            'https://huggingface.co/SadeghK/persian-text-to-speech/resolve/main/farsi/amir/epoch%3D5261-step%3D2455712.onnx.json?download=true' \
+            -o models/amir.onnx.json
+
+          # Ganji
+          curl -L --fail --retry 5 \
+            'https://huggingface.co/SadeghK/persian-text-to-speech/resolve/main/farsi/ganji/epoch%3D5719-step%3D2609600-ganji.onnx?download=true' \
+            -o models/ganji.onnx
+          curl -L --fail --retry 5 \
+            'https://huggingface.co/SadeghK/persian-text-to-speech/resolve/main/farsi/ganji/epoch%3D5719-step%3D2609600-ganji.onnx.json?download=true' \
+            -o models/ganji.onnx.json
+
+          # Ganji Adabi
+          curl -L --fail --retry 5 \
+            'https://huggingface.co/SadeghK/persian-text-to-speech/resolve/main/farsi/ganji-adabi/epoch%3D6363-step%3D2694608-ganji-adabi.onnx?download=true' \
+            -o models/ganji_adabi.onnx
+          curl -L --fail --retry 5 \
+            'https://huggingface.co/SadeghK/persian-text-to-speech/resolve/main/farsi/ganji-adabi/epoch%3D6363-step%3D2694608-ganji-adabi.onnx.json?download=true' \
+            -o models/ganji_adabi.onnx.json
+
+          ls -lh models
+
+      - name: Generate samples
+        run: |
+          set -euxo pipefail
+          TEXT='صبح بخیر. یه صبح تازه شروع شده. امروز لازم نیست با عجله روزم رو شروع کنم. چند لحظه آروم می‌مونم و یک نفس عمیق می‌کشم. برای سلامتی، برای فرصت تازه امروز، و برای توانایی فکر کردن و ساختن سپاسگزارم. امروز رو با قدردانی شروع می‌کنم و با آرامش ادامه می‌دم.'
+          for v in mana amir ganji ganji_adabi; do
+            echo "$TEXT" | piper --model "models/$v.onnx" --config "models/$v.onnx.json" --output_file "out/$v.wav"
+            ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "out/$v.wav" | xargs -I{} echo "$v duration: {}"
+          done
+
+      - name: ASR roundtrip
+        run: |
+          python - <<'PY'
+          from transformers import pipeline
+          import json, glob, os
+          pipe = pipeline(
+              "automatic-speech-recognition",
+              model="openai/whisper-base",
+              device=-1,
+              generate_kwargs={"language":"fa","task":"transcribe"}
+          )
+          result={}
+          for fn in sorted(glob.glob("out/*.wav")):
+              name=os.path.basename(fn)
+              try:
+                  r=pipe(fn)
+                  result[name]=r["text"]
+              except Exception as e:
+                  result[name]="ERROR: "+repr(e)
+          print(json.dumps(result, ensure_ascii=False, indent=2))
+          open("out/asr.json","w",encoding="utf-8").write(json.dumps(result,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: persian-piper-voice-comparison
+          path: out/*
+          retention-days: 3
