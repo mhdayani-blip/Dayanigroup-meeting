@@ -32,6 +32,8 @@ jobs:
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install "pocket-tts @ git+https://github.com/mallahyari/pocket-tts@main"
           pip install transformers sentencepiece scipy huggingface_hub soundfile
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
 
       - name: Generate
         run: python tools/pocket_farsi_reference_style.py
@@ -40,7 +42,6 @@ jobs:
         run: |
           python - <<'PY'
           from transformers import pipeline
-          import json
           pipe = pipeline(
               "automatic-speech-recognition",
               model="openai/whisper-base",
@@ -54,6 +55,7 @@ jobs:
           PY
 
       - name: Upload
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: pocket-farsi-reference-style
