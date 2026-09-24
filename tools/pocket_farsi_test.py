@@ -46,7 +46,7 @@ def phonemise(text: str) -> str:
     raw = tok.batch_decode(out, skip_special_tokens=True)[0].strip()
     return raw.translate(TO_PHONEMES).replace("1", "")
 
-tts_model = TTSModel.load_model(MODEL_REPO)
+tts_model = TTSModel.load_model(config=f"hf://{MODEL_REPO}/model.yaml")
 
 female_prompt = hf_hub_download(
     MODEL_REPO,
