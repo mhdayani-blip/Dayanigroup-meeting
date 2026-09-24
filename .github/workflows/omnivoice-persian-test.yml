@@ -1,0 +1,65 @@
+name: OmniVoice Persian Natural Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - test/edge-tts-dilara
+    paths:
+      - .github/workflows/omnivoice-persian-test.yml
+
+permissions:
+  contents: read
+
+jobs:
+  synth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Download CrispASR
+        run: |
+          set -euxo pipefail
+          curl -L --fail --retry 3             https://github.com/CrispStrobe/CrispASR/releases/download/v0.8.36/crispasr-linux-x86_64.tar.gz             -o crispasr.tar.gz
+          mkdir -p crispasr-dist
+          tar -xzf crispasr.tar.gz -C crispasr-dist
+          BIN=$(find crispasr-dist -type f -name crispasr | head -n1)
+          chmod +x "$BIN"
+          echo "CRISPASR_BIN=$BIN" >> "$GITHUB_ENV"
+
+      - name: Install ASR dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install transformers soundfile
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+
+      - name: Generate Persian
+        run: |
+          set -euxo pipefail
+          mkdir -p out
+          TEXT='صبح بخیر. یه صبح تازه شروع شده. امروز لازم نیست با عجله روزم رو شروع کنم. چند لحظه آروم می‌مونم و یه نفس عمیق می‌کشم. برای سلامتی، برای فرصت تازه امروز، و برای توانایی فکر کردن و ساختن، سپاسگزارم. امروز رو با قدردانی شروع می‌کنم و با آرامش ادامه می‌دم.'
+          "$CRISPASR_BIN"             --backend omnivoice             -m auto             -l fa             --instruct "male, middle-aged, low pitch"             --seed 42             --tts "$TEXT"             --tts-output out/omnivoice-fa.wav
+          file out/omnivoice-fa.wav
+          ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 out/omnivoice-fa.wav
+
+      - name: ASR validation
+        run: |
+          python - <<'PY'
+          from transformers import pipeline
+          pipe=pipeline("automatic-speech-recognition",model="openai/whisper-base",device=-1,
+                        generate_kwargs={"language":"fa","task":"transcribe"})
+          fn="out/omnivoice-fa.wav"
+          r=pipe(fn)
+          print(r["text"])
+          open("out/asr.txt","w",encoding="utf-8").write(r["text"])
+          PY
+
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: omnivoice-persian-natural-test
+          path: out/*
+          retention-days: 3
+          if-no-files-found: error
