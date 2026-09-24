@@ -1,0 +1,45 @@
+name: Pocket TTS Farsi Female Test
+
+on:
+  push:
+    branches:
+      - test/edge-tts-dilara
+    paths:
+      - tools/pocket_farsi_test.py
+      - .github/workflows/pocket-farsi-test.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthesize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install "pocket-tts @ git+https://github.com/mallahyari/pocket-tts@main"
+          pip install transformers sentencepiece scipy huggingface_hub
+
+      - name: Generate Persian female test
+        run: python tools/pocket_farsi_test.py
+
+      - name: Upload test audio
+        uses: actions/upload-artifact@v4
+        with:
+          name: pocket-farsi-female-test
+          path: pocket-test-output/pocket-farsi-female-test.wav
+          retention-days: 7
+          if-no-files-found: error
