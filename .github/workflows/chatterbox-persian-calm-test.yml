@@ -28,6 +28,11 @@ jobs:
           chmod +x "$BIN"
           echo "CRISPASR_BIN=$BIN" >> "$GITHUB_ENV"
 
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+
       - name: Download Persian Chatterbox GGUF weights
         run: |
           set -euxo pipefail
