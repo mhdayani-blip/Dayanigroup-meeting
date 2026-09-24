@@ -1,0 +1,59 @@
+name: OmniVoice Persian Quick Gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - test/edge-tts-dilara
+    paths:
+      - .github/workflows/omnivoice-persian-quick.yml
+
+permissions:
+  contents: read
+
+jobs:
+  synth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Download CrispASR
+        run: |
+          set -euxo pipefail
+          curl -L --fail --retry 3             https://github.com/CrispStrobe/CrispASR/releases/download/v0.8.36/crispasr-linux-x86_64.tar.gz             -o crispasr.tar.gz
+          mkdir -p crispasr-dist
+          tar -xzf crispasr.tar.gz -C crispasr-dist
+          BIN=$(find crispasr-dist -type f -name crispasr | head -n1)
+          chmod +x "$BIN"
+          echo "CRISPASR_BIN=$BIN" >> "$GITHUB_ENV"
+
+      - name: Install validation
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install transformers soundfile
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+
+      - name: Generate two sentences
+        run: |
+          mkdir -p out
+          "$CRISPASR_BIN"             --backend omnivoice -m auto -l fa             --instruct "male, middle-aged, low pitch"             --seed 42             --tts "صبح بخیر. امروز رو با قدردانی شروع می‌کنم و با آرامش ادامه می‌دم."             --tts-output out/test.wav
+
+      - name: ASR
+        run: |
+          python - <<'PY'
+          from transformers import pipeline
+          p=pipeline("automatic-speech-recognition",model="openai/whisper-base",device=-1,
+                     generate_kwargs={"language":"fa","task":"transcribe"})
+          r=p("out/test.wav")["text"]
+          print(r)
+          open("out/asr.txt","w",encoding="utf-8").write(r)
+          PY
+
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: omnivoice-persian-quick
+          path: out/*
+          retention-days: 3
