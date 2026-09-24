@@ -51,9 +51,9 @@ async def synthesize():
     run(
         "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
         "-f", "concat", "-safe", "0",
-        "-i", concat_file.name,
+        "-i", str(concat_file),
         "-c:a", "aac", "-b:a", "192k",
-        str(narration.name),
+        str(narration),
     )
 
     # A simple, fully generated ambient bed for testing mix balance.
