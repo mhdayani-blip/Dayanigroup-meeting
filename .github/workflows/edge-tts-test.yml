@@ -1,0 +1,46 @@
+name: Edge TTS Dilara Test
+
+on:
+  push:
+    branches:
+      - test/edge-tts-dilara
+    paths:
+      - tools/edge_tts_test.py
+      - .github/workflows/edge-tts-test.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthesize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install edge-tts
+          ffmpeg -version
+
+      - name: Generate Persian female TTS test
+        run: python tools/edge_tts_test.py
+
+      - name: Upload audio samples
+        uses: actions/upload-artifact@v4
+        with:
+          name: edge-tts-dilara-test
+          path: |
+            tts-test-output/dilara-narration.m4a
+            tts-test-output/dilara-with-music-minus8db.m4a
+          retention-days: 7
+          if-no-files-found: error
