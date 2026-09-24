@@ -1,0 +1,69 @@
+name: Chatterbox Persian Calm Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - test/edge-tts-dilara
+    paths:
+      - .github/workflows/chatterbox-persian-calm-test.yml
+
+permissions:
+  contents: read
+
+jobs:
+  synth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Download CrispASR CPU binary
+        run: |
+          set -euxo pipefail
+          curl -L --fail --retry 3 \
+            https://github.com/CrispStrobe/CrispASR/releases/download/v0.8.36/crispasr-linux-x86_64.tar.gz \
+            -o crispasr.tar.gz
+          mkdir -p crispasr-dist
+          tar -xzf crispasr.tar.gz -C crispasr-dist
+          BIN=$(find crispasr-dist -type f -name crispasr | head -n1)
+          chmod +x "$BIN"
+          echo "CRISPASR_BIN=$BIN" >> "$GITHUB_ENV"
+
+      - name: Download Persian Chatterbox GGUF weights
+        run: |
+          set -euxo pipefail
+          mkdir -p models
+          curl -L --fail --retry 5 --retry-delay 2 \
+            'https://huggingface.co/mazrba/Chatterbox-TTS-Persian-gguf/resolve/main/chatterbox-t3-fa-f16.gguf?download=true' \
+            -o models/chatterbox-t3-fa-f16.gguf
+          curl -L --fail --retry 5 --retry-delay 2 \
+            'https://huggingface.co/mazrba/Chatterbox-TTS-Persian-gguf/resolve/main/chatterbox-s3gen-q8_0.gguf?download=true' \
+            -o models/chatterbox-s3gen-q8_0.gguf
+
+      - name: Synthesize calmer Persian sample
+        run: |
+          set -euxo pipefail
+          mkdir -p output
+          TEXT='صبح بخیر. امروز لازم نیست با عجله روزم را شروع کنم. چند لحظه مکث می‌کنم و آرام نفس می‌کشم. برای فرصت تازه‌ی امروز، برای سلامتی، و برای توانایی فکر کردن و ساختن، سپاسگزارم. امروز را با قدردانی شروع می‌کنم، و با آرامِش ادامه می‌دهم.'
+          "$CRISPASR_BIN" \
+            --backend chatterbox \
+            -m models/chatterbox-t3-fa-f16.gguf \
+            --codec-model models/chatterbox-s3gen-q8_0.gguf \
+            --temperature 0.58 \
+            --seed 42 \
+            --tts "$TEXT" \
+            --tts-output output/raw.wav
+
+          ffmpeg -hide_banner -loglevel error -y \
+            -i output/raw.wav \
+            -filter:a "atempo=0.82" \
+            output/chatterbox-persian-calm-test.wav
+
+          file output/chatterbox-persian-calm-test.wav
+          ls -lh output/chatterbox-persian-calm-test.wav
+
+      - name: Upload audio
+        uses: actions/upload-artifact@v4
+        with:
+          name: chatterbox-persian-calm-test
+          path: output/chatterbox-persian-calm-test.wav
+          retention-days: 3
