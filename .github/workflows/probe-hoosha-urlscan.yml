@@ -1,0 +1,44 @@
+name: Probe Hoosha Public Network
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - test/edge-tts-dilara
+    paths:
+      - .github/workflows/probe-hoosha-urlscan.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Search urlscan public scans
+        run: |
+          mkdir -p probe
+          curl -L --silent --show-error             'https://urlscan.io/api/v1/search/?q=domain:hoosha.com&size=20'             -o probe/search.json
+          python - <<'PY'
+          import json, pathlib, subprocess
+          p=pathlib.Path('probe/search.json')
+          data=json.loads(p.read_text())
+          print('results', len(data.get('results',[])))
+          for i,r in enumerate(data.get('results',[])[:5]):
+              uuid=r.get('_id') or r.get('task',{}).get('uuid')
+              url=r.get('page',{}).get('url') or r.get('task',{}).get('url')
+              print(i, uuid, url)
+              if uuid:
+                  subprocess.run(['curl','-L','--silent','--show-error',
+                    f'https://urlscan.io/api/v1/result/{uuid}/',
+                    '-o',f'probe/result-{i}-{uuid}.json'],check=False)
+          PY
+          grep -RoiE 'elevenlabs|voice_id|shared-voices|text-to-speech|tts|speech|niyayesh|نیایش|api\.[A-Za-z0-9._-]+' probe | head -n 300 || true
+
+      - name: Upload probe results
+        uses: actions/upload-artifact@v4
+        with:
+          name: hoosha-urlscan-probe
+          path: probe/*.json
+          retention-days: 2
