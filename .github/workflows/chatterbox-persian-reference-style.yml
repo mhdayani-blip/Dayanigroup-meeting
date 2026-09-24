@@ -1,0 +1,109 @@
+name: Chatterbox Persian Reference Style Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - test/edge-tts-dilara
+    paths:
+      - .github/workflows/chatterbox-persian-reference-style.yml
+
+permissions:
+  contents: read
+
+jobs:
+  synth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Download CrispASR CPU binary
+        run: |
+          set -euxo pipefail
+          curl -L --fail --retry 3 \
+            https://github.com/CrispStrobe/CrispASR/releases/download/v0.8.36/crispasr-linux-x86_64.tar.gz \
+            -o crispasr.tar.gz
+          mkdir -p crispasr-dist
+          tar -xzf crispasr.tar.gz -C crispasr-dist
+          BIN=$(find crispasr-dist -type f -name crispasr | head -n1)
+          chmod +x "$BIN"
+          echo "CRISPASR_BIN=$BIN" >> "$GITHUB_ENV"
+
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+
+      - name: Download Persian Chatterbox GGUF weights
+        run: |
+          set -euxo pipefail
+          mkdir -p models
+          curl -L --fail --retry 5 --retry-delay 2 \
+            'https://huggingface.co/mazrba/Chatterbox-TTS-Persian-gguf/resolve/main/chatterbox-t3-fa-f16.gguf?download=true' \
+            -o models/chatterbox-t3-fa-f16.gguf
+          curl -L --fail --retry 5 --retry-delay 2 \
+            'https://huggingface.co/mazrba/Chatterbox-TTS-Persian-gguf/resolve/main/chatterbox-s3gen-q8_0.gguf?download=true' \
+            -o models/chatterbox-s3gen-q8_0.gguf
+
+      - name: Synthesize reference-style phrases
+        run: |
+          set -euxo pipefail
+          mkdir -p output parts
+
+          texts=(
+            "صبح بخیر."
+            "یه صبحِ تازه شروع شده."
+            "امروز لازم نیست با عجله، روزم رو شروع کنم."
+            "چند لحظه آروم می‌مونم، و یک نفسِ عمیق می‌کشم."
+            "برای سلامتی، برای این فرصتِ تازه، و برای تواناییِ ساختن، سپاسگزارم."
+            "امروز رو با قدردانی شروع می‌کنم."
+            "با آرامِش ادامه می‌دم."
+          )
+
+          i=0
+          for t in "${texts[@]}"; do
+            "$CRISPASR_BIN" \
+              --backend chatterbox \
+              -m models/chatterbox-t3-fa-f16.gguf \
+              --codec-model models/chatterbox-s3gen-q8_0.gguf \
+              --temperature 0.78 \
+              --tts-cfg-scale 0.30 \
+              --seed 42 \
+              --tts "$t" \
+              --tts-output "parts/p${i}.wav"
+            i=$((i+1))
+          done
+
+          # Real pauses instead of slowing the speech itself.
+          ffmpeg -hide_banner -loglevel error -y -f lavfi -i anullsrc=r=24000:cl=mono -t 0.55 parts/s055.wav
+          ffmpeg -hide_banner -loglevel error -y -f lavfi -i anullsrc=r=24000:cl=mono -t 0.80 parts/s080.wav
+          ffmpeg -hide_banner -loglevel error -y -f lavfi -i anullsrc=r=24000:cl=mono -t 1.05 parts/s105.wav
+
+          cat > parts/list.txt <<'EOF'
+          file 'p0.wav'
+          file 's080.wav'
+          file 'p1.wav'
+          file 's055.wav'
+          file 'p2.wav'
+          file 's080.wav'
+          file 'p3.wav'
+          file 's105.wav'
+          file 'p4.wav'
+          file 's080.wav'
+          file 'p5.wav'
+          file 's055.wav'
+          file 'p6.wav'
+          EOF
+
+          ffmpeg -hide_banner -loglevel error -y \
+            -f concat -safe 0 -i parts/list.txt -c:a pcm_s16le \
+            output/chatterbox-persian-reference-style.wav
+
+          file output/chatterbox-persian-reference-style.wav
+          ls -lh output/chatterbox-persian-reference-style.wav
+
+      - name: Upload audio
+        uses: actions/upload-artifact@v4
+        with:
+          name: chatterbox-persian-reference-style
+          path: output/chatterbox-persian-reference-style.wav
+          retention-days: 3
