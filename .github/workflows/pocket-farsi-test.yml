@@ -1,4 +1,4 @@
-name: Pocket TTS Farsi Female Test
+name: Pocket TTS Farsi Male News Voice Test
 
 on:
   push:
@@ -33,13 +33,13 @@ jobs:
           pip install "pocket-tts @ git+https://github.com/mallahyari/pocket-tts@main"
           pip install transformers sentencepiece scipy huggingface_hub
 
-      - name: Generate Persian female test
+      - name: Generate Persian male news-voice test
         run: python tools/pocket_farsi_test.py
 
       - name: Upload test audio
         uses: actions/upload-artifact@v4
         with:
-          name: pocket-farsi-female-test
-          path: pocket-test-output/pocket-farsi-female-test.wav
+          name: pocket-farsi-male-news-voice-test
+          path: pocket-test-output/pocket-farsi-male-news-voice-test.wav
           retention-days: 7
           if-no-files-found: error
