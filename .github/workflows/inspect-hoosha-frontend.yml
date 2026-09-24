@@ -1,0 +1,57 @@
+name: Inspect Hoosha Public Frontend Bundles
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - test/edge-tts-dilara
+    paths:
+      - .github/workflows/inspect-hoosha-frontend.yml
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fetch public frontend and bundles
+        run: |
+          set -e
+          mkdir -p out/js
+          curl -L --silent --show-error 'https://core.hoosha.com/signin' -o out/signin.html
+          python - <<'PY'
+          from bs4 import BeautifulSoup
+          from urllib.parse import urljoin
+          import pathlib, subprocess, json
+          html=pathlib.Path('out/signin.html').read_text(errors='ignore')
+          soup=BeautifulSoup(html,'html.parser')
+          urls=[]
+          for tag in soup.find_all(['script','link']):
+              u=tag.get('src') or tag.get('href')
+              if not u: continue
+              full=urljoin('https://core.hoosha.com/signin',u)
+              if full.endswith('.js') or '.js?' in full:
+                  urls.append(full)
+          urls=list(dict.fromkeys(urls))
+          pathlib.Path('out/scripts.json').write_text(json.dumps(urls,ensure_ascii=False,indent=2))
+          print('scripts',len(urls))
+          for i,u in enumerate(urls):
+              print(i,u)
+              subprocess.run(['curl','-L','--silent','--show-error',u,'-o',f'out/js/{i:03d}.js'],check=False)
+          PY
+          echo '--- keyword hits ---'
+          grep -RniE 'نیایش|niyayesh|elevenlabs|eleven_lab|eleven-lab|voice[_-]?id|text.?to.?speech|speech|tts|صداگذاری|دلسوز|compassion|sad|emotional|voice' out/js > out/hits.txt || true
+          head -n 500 out/hits.txt || true
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: hoosha-public-frontend-inspection
+          path: |
+            out/signin.html
+            out/scripts.json
+            out/hits.txt
+            out/js/*.js
+          retention-days: 2
